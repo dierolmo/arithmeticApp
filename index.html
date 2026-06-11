@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>arithmeticApp</title>
+
+  <!-- tailwind -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- jetbrains mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: { mono: ['JetBrains Mono', 'monospace'] }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* -- reset ---------------------------------------------- */
+    *, *::before, *::after {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    /*
+     * el gradiente radial en el body le da sustancia al
+     * backdrop-filter del wrapper: sin el el blur no tiene nada
+     * que desdibujar y el efecto glass desaparece
+     */
+
+    body {
+      font-family: 'JetBrains Mono', monospace;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+      background:
+        radial-gradient(ellipse at 28% 22%, #1c1042 0%, #121212 52%),
+        radial-gradient(ellipse at 75% 80%, #0e1c32 0%, #121212 50%);
+      background-attachment: fixed;
+    }
+
+    /* -- wrapper principal con efecto glass --------------- */
+    #calcWrapper {
+      width: min(400px, 100%);
+      background: rgba(18, 18, 20, 0.86);
+      backdrop-filter: blur(28px) saturate(1.6);
+      -webkit-backdrop-filter: blur(28px) saturate(1.6);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.55),          /* borde exterior oscuro */
+        0 32px 80px rgba(0, 0, 0, 0.65),          /* sombra de profundidad */
+        inset 0 1px 0 rgba(255, 255, 255, 0.06),  /* brillo top interior   */
+        0 0 100px rgba(79, 70, 229, 0.06);         /* halo índigo muy sutil */
+    }
+
+    /* -- area de display ---------------------------------- */
+    #displayArea {
+      background: rgba(6, 6, 8, 0.92);
+      padding: 1.4rem 1.4rem 1.1rem;
+      min-height: 122px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      gap: 0.28rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      overflow: hidden; /* recorta el shake para que no desborde */
+    }
+
+    /* linea de historial - pequeña y apagada */
+    #expressionHistory {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 300;
+      color: #424242;
+      text-align: right;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      min-height: 1em;
+      letter-spacing: 0.04em;
+      transition: color 0.3s ease;
+    }
+
+    /* valor principal del display */
+    #displayOutput {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 3.2rem;
+      font-weight: 500;
+      color: #eaeaea;
+      text-align: right;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      transition: font-size 0.09s ease, color 0.22s ease;
+    }
+
+    /*
+     * cursor parpadeante via ::after - puro css,
+     * no necesita manipulacion desde javascript
+     */
+    #displayOutput::after {
+      content: '';
+      display: inline-block;
+      width: 2px;
+      height: 0.68em;
+      background-color: #4f46e5;
+      margin-left: 4px;
+      vertical-align: middle;
+      border-radius: 1px;
+      animation: cursorBlink 1.05s step-end infinite;
+    }
+
+    @keyframes cursorBlink {
+      0%, 100% { opacity: 0.9; }
+      50%       { opacity: 0;   }
+    }
+
+    /* estado de error: texto rojo mate + animacion de shake */
+    #displayOutput.isError {
+      color: #df5c5c;
+      animation: displayShake 0.36s ease forwards;
+    }
+
+    /* oculta el cursor durante el estado de error */
+    #displayOutput.isError::after {
+      display: none;
+    }
+
+    @keyframes displayShake {
+      0%,  100% { transform: translateX(0);   }
+      18%        { transform: translateX(-9px); }
+      36%        { transform: translateX(9px);  }
+      54%        { transform: translateX(-6px); }
+      72%        { transform: translateX(5px);  }
+      90%        { transform: translateX(-2px); }
+    }
+
+    /* - grilla de botones -------------------------------- */
+    /*
+     * fondo del grid actua como separador de 1px:
+     * gap: 1px + background del contenedor = micro-lineas entre botones
+     */
+    #btnGrid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1px;
+      background-color: rgba(255, 255, 255, 0.05);
+    }
+
+    /* - boton base -------------------------------- */
+    .calcBtn {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1.05rem;
+      font-weight: 400;
+      color: #c8c8c8;
+      background-color: rgba(22, 22, 25, 0.95);
+      border: none;
+      outline: none;
+      cursor: pointer;
+      padding: 1.22rem 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      /* transición suave: hover fluido, active rápido */
+      transition: background-color 0.18s ease, color 0.18s ease, transform 0.08s ease;
+      letter-spacing: 0.02em;
+    }
+
+    .calcBtn:hover {
+      background-color: rgba(40, 40, 45, 0.95);
+    }
+
+    /* presion fisica: escala + aceleracion de transicion */
+    .calcBtn:active {
+      transform: scale(0.94);
+      background-color: rgba(55, 55, 62, 0.95);
+      transition: background-color 0.07s ease, transform 0.07s ease;
+    }
+
+    /* - botones especiales: ac  +/-  % --------------------- */
+    .calcBtnSpecial {
+      background-color: rgba(27, 27, 30, 0.95);
+      color: #6e6e6e;
+      font-size: 0.88rem;
+      letter-spacing: 0.05em;
+    }
+
+    .calcBtnSpecial:hover {
+      background-color: rgba(42, 42, 47, 0.95);
+      color: #959595;
+    }
+
+    .calcBtnSpecial:active {
+      transform: scale(0.94);
+      transition: background-color 0.07s ease, transform 0.07s ease;
+    }
+
+    /* -- botones de operador: -------------------- */
+    .calcBtnOperator {
+      background-color: rgba(27, 27, 32, 0.95);
+      color: #a5a5a5;
+      font-size: 1.2rem;
+    }
+
+    .calcBtnOperator:hover {
+      background-color: rgba(42, 42, 50, 0.95);
+      color: #cccccc;
+    }
+
+    .calcBtnOperator:active {
+      transform: scale(0.94);
+      transition: background-color 0.07s ease, transform 0.07s ease;
+    }
+
+    /* operador activo: resaltado invertido mientras espera segundo operando */
+    .calcBtnOperator.activeOperator {
+      background-color: #eaeaea;
+      color: #111111;
+      transition: background-color 0.15s ease, color 0.15s ease;
+    }
+
+    .calcBtnOperator.activeOperator:hover {
+      background-color: #d6d6d6;
+    }
+
+    /* -- boton igual con brillo interior sutil -------------- */
+    .calcBtnEquals {
+      background-color: #4f46e5;
+      color: #ffffff;
+      font-size: 1.2rem;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+      transition: background-color 0.18s ease, transform 0.08s ease;
+    }
+
+    .calcBtnEquals:hover {
+      background-color: #5c53f0;
+    }
+
+    .calcBtnEquals:active {
+      transform: scale(0.94);
+      background-color: #4338ca;
+      transition: background-color 0.07s ease, transform 0.07s ease;
+    }
+
+    /* cero: doble ancho con texto pegado a la izquierda */
+    #btnZero {
+      grid-column: span 2;
+      justify-content: flex-start;
+      padding-left: 1.55rem;
+    }
+
+    /* -- footer de identidad -------------------------- */
+    #devFooter {
+      padding: 0.5rem 1rem;
+      text-align: right;
+      border-top: 1px solid rgba(255, 255, 255, 0.03);
+    }
+
+    #devFooter span {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.58rem;
+      color: #272727;
+      letter-spacing: 0.1em;
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- calculadora principal -->
+  <div id="calcWrapper">
+
+    <!-- display -->
+    <div id="displayArea">
+      <div id="expressionHistory">&nbsp;</div>
+      <div id="displayOutput">0</div>
+    </div>
+
+    <!-- lista de botones -->
+    <div id="btnGrid">
+
+      <!-- fila 1: ac  +/-  % -->
+      <button class="calcBtn calcBtnSpecial"  id="btnClear"         onclick="handleClear()">AC</button>
+      <button class="calcBtn calcBtnSpecial"  id="btnToggleSign"     onclick="toggleSign()">+/-</button>
+      <button class="calcBtn calcBtnSpecial"  id="btnPercent"        onclick="applyPercent()">%</button>
+      <button class="calcBtn calcBtnOperator" id="divideOperator"    onclick="processOperator('/')">÷</button>
+
+      <!-- fila 2: 7  8  9  x -->
+      <button class="calcBtn" id="numSeven"                          onclick="processDigit('7')">7</button>
+      <button class="calcBtn" id="numEight"                          onclick="processDigit('8')">8</button>
+      <button class="calcBtn" id="numNine"                           onclick="processDigit('9')">9</button>
+      <button class="calcBtn calcBtnOperator" id="multiplyOperator"  onclick="processOperator('*')">×</button>
+
+      <!-- fila 3: 4  5  6  - -->
+      <button class="calcBtn" id="numFour"                           onclick="processDigit('4')">4</button>
+      <button class="calcBtn" id="numFive"                           onclick="processDigit('5')">5</button>
+      <button class="calcBtn" id="numSix"                            onclick="processDigit('6')">6</button>
+      <button class="calcBtn calcBtnOperator" id="subtractOperator"  onclick="processOperator('-')">−</button>
+
+      <!-- fila 4: 1  2  3  + -->
+      <button class="calcBtn" id="numOne"                            onclick="processDigit('1')">1</button>
+      <button class="calcBtn" id="numTwo"                            onclick="processDigit('2')">2</button>
+      <button class="calcBtn" id="numThree"                          onclick="processDigit('3')">3</button>
+      <button class="calcBtn calcBtnOperator" id="addOperator"       onclick="processOperator('+')">+</button>
+
+      <!-- fila 5: 0 (doble)  .  = -->
+      <button class="calcBtn" id="btnZero"                           onclick="processDigit('0')">0</button>
+      <button class="calcBtn" id="btnDecimal"                        onclick="processDecimal()">.</button>
+      <button class="calcBtn calcBtnEquals"   id="equalsOperator"    onclick="evaluateExpression()">=</button>
+
+    </div>
+
+    <!-- firma del dev -->
+    <div id="devFooter">
+      <span>devLog // dieromlo</span>
+    </div>
+
+  </div>
+
+  <script>
+    /*
+     * calculator - v2
+     * author  : dieromlo
+     * stack   : vanilla js + tailwind cdn + jetbrains mono
+     * layout  : state -> arithmetic engine -> display -> input handlers -> keyboard
+     */
+
+    // -- estado de la calculadora -----------------------------------------
+    let currentOperand       = '0';   // operando visible en pantalla
+    let leftOperand          = '';    // operando izquierdo almacenado
+    let storedOperator       = null;  // operador pendiente de resolucion
+    let awaitingNextOperand  = false; // true -> proximo digito sobreescribe display
+    let isEvaluationComplete = false; // true -> se acaba de presionar '='
+
+    // -- referencias al dom -----------------------------------------
+    const displayOutputEl     = document.getElementById('displayOutput');
+    const expressionHistoryEl = document.getElementById('expressionHistory');
+    const btnClearEl          = document.getElementById('btnClear');
+
+    // mapa operador → botón para gestión del estado activo
+    const operatorBtnMap = {
+      '+': document.getElementById('addOperator'),
+      '-': document.getElementById('subtractOperator'),
+      '*': document.getElementById('multiplyOperator'),
+      '/': document.getElementById('divideOperator'),
+    };
+
+    // -- motor aritmetico -----------------------------------------
+
+    // ejecuta la operacion entre dos operandos y devuelve el resultado
+    const executeArithmetic = (a, b, op) => {
+      const numA = parseFloat(a);
+      const numB = parseFloat(b);
+      switch (op) {
+        case '+': return numA + numB;
+        case '-': return numA - numB;
+        case '*': return numA * numB;
+        case '/':
+          if (numB === 0) return 'error'; // division por cero no permitida
+          return numA / numB;
+        default: return numB;
+      }
+    };
+
+    // traduce el operador interno al símbolo unicode de display
+    const getSymbol = (op) =>
+      ({ '+': '+', '-': '−', '*': '×', '/': '÷' })[op] || op;
+
+    // -- utilidades de display -----------------------------------------
+
+    // formatea el numero limitando a 10 digitos significativos
+    const formatOutput = (numStr) => {
+      if (numStr === 'error') return 'ERR';
+      const n = parseFloat(numStr);
+      if (isNaN(n)) return '0';
+      // notacion exponencial para valores fuera del rango visual
+      if (Math.abs(n) >= 1e12 || (Math.abs(n) < 1e-7 && n !== 0)) {
+        return n.toExponential(3);
+      }
+      return parseFloat(n.toPrecision(10)).toString();
+    };
+
+    // ajusta el tamño de fuente segun la longitud del valor en pantalla
+    const scaleFontToFit = (len) => {
+      if (len > 13)      displayOutputEl.style.fontSize = '1.5rem';
+      else if (len > 10) displayOutputEl.style.fontSize = '2rem';
+      else if (len > 7)  displayOutputEl.style.fontSize = '2.6rem';
+      else               displayOutputEl.style.fontSize = '3.2rem';
+    };
+
+    // sincroniza el dom con el estado interno — función central de render
+    const refreshDisplay = () => {
+      const text = formatOutput(currentOperand);
+      displayOutputEl.textContent = text;
+      scaleFontToFit(text.length);
+      // alterna el label entre 'AC' y 'C' según si hay entrada activa
+      btnClearEl.textContent =
+        (currentOperand !== '0' && !isEvaluationComplete) ? 'C' : 'AC';
+    };
+
+    // actualiza la linea de historial sobre el display
+    const syncHistory = (text) => {
+      expressionHistoryEl.textContent = text || '\u00a0';
+    };
+
+    // gestiona el resaltado del botón operador activo
+    const highlightOperatorBtn = (op) => {
+      Object.values(operatorBtnMap)
+        .forEach(btn => btn.classList.remove('activeOperator'));
+      if (op && operatorBtnMap[op]) {
+        operatorBtnMap[op].classList.add('activeOperator');
+      }
+    };
+
+    /*
+     * activa el estado de error con feedback visual:
+     * remueve y reaplica .isError para reiniciar la animación shake
+     * aunque el error se dispare dos veces seguidas
+     */
+    const triggerError = (historyMsg = '') => {
+      currentOperand       = 'error';
+      leftOperand          = '';
+      storedOperator       = null;
+      awaitingNextOperand  = false;
+      highlightOperatorBtn(null);
+      displayOutputEl.classList.remove('isError');
+      void displayOutputEl.offsetWidth;           // fuerza reflow para reiniciar @keyframes
+      displayOutputEl.classList.add('isError');
+      if (historyMsg) syncHistory(historyMsg);
+      refreshDisplay();
+    };
+
+    // -- manejadores de entrada --------------------------------
+
+    // procesa la entrada de un dígito numérico (0–9)
+    const processDigit = (digit) => {
+      if (currentOperand === 'error') return;
+
+      if (awaitingNextOperand) {
+        // primer digito del nuevo operando: sobreescribe el display
+        currentOperand      = digit;
+        awaitingNextOperand = false;
+      } else if (currentOperand === '0' && digit !== '0') {
+        currentOperand = digit; // sustituye el cero inicial
+      } else {
+        // limite de 12 digitos para evitar desbordamiento visual
+        if (currentOperand.replace(/[-\.]/g, '').length >= 12) return;
+        currentOperand += digit;
+      }
+
+      isEvaluationComplete = false;
+      displayOutputEl.classList.remove('isError');
+      refreshDisplay();
+    };
+
+    // maneja la entrada del punto decimal, evitando duplicados
+    const processDecimal = () => {
+      if (currentOperand === 'error') return;
+
+      if (awaitingNextOperand) {
+        currentOperand      = '0.';
+        awaitingNextOperand = false;
+        refreshDisplay();
+        return;
+      }
+      // un solo punto decimal por operando
+      if (!currentOperand.includes('.')) {
+        currentOperand += '.';
+        refreshDisplay();
+      }
+    };
+
+    // procesa los operadores aritmeticos entrantes
+    const processOperator = (op) => {
+      if (currentOperand === 'error') return;
+
+      /*
+       * si hay un operador pendiente y ya existe un segundo operando,
+       * ejecuta el calculo intermedio antes de registrar el nuevo operador
+       * -> permite encadenar operaciones: 3 + 5 x 2 = 16
+       */
+      if (storedOperator && !awaitingNextOperand) {
+        const result = executeArithmetic(leftOperand, currentOperand, storedOperator);
+        if (result === 'error') { triggerError(); return; }
+        currentOperand = parseFloat(result.toPrecision(12)).toString();
+      }
+
+      leftOperand          = currentOperand;
+      storedOperator       = op;
+      awaitingNextOperand  = true;
+      isEvaluationComplete = false;
+
+      displayOutputEl.classList.remove('isError');
+      syncHistory(`${formatOutput(leftOperand)} ${getSymbol(op)}`);
+      highlightOperatorBtn(op);
+      refreshDisplay();
+    };
+
+    // evalua la expresion completa al presionar '='
+    const evaluateExpression = () => {
+      if (!storedOperator || currentOperand === 'error') return;
+
+      const historyStr =
+        `${formatOutput(leftOperand)} ${getSymbol(storedOperator)} ${formatOutput(currentOperand)} =`;
+      const result = executeArithmetic(leftOperand, currentOperand, storedOperator);
+
+      if (result === 'error') {
+        triggerError('err: div / 0');
+        return;
+      }
+
+      const resultStr = parseFloat(result.toPrecision(12)).toString();
+
+      syncHistory(historyStr);
+      currentOperand       = resultStr;
+      leftOperand          = '';
+      storedOperator       = null;
+      awaitingNextOperand  = true;
+      isEvaluationComplete = true;
+
+      highlightOperatorBtn(null);
+      displayOutputEl.classList.remove('isError');
+      refreshDisplay();
+    };
+
+    // limpia el estado actual de la calculadora (c = entry / ac = full reset)
+    const handleClear = () => {
+      if (btnClearEl.textContent === 'C') {
+        // clear entry: solo borra el operando en pantalla
+        currentOperand      = '0';
+        awaitingNextOperand = false;
+      } else {
+        // all clear: restaura el estado inicial completo
+        currentOperand       = '0';
+        leftOperand          = '';
+        storedOperator       = null;
+        awaitingNextOperand  = false;
+        isEvaluationComplete = false;
+        syncHistory('');
+        highlightOperatorBtn(null);
+      }
+      displayOutputEl.classList.remove('isError');
+      refreshDisplay();
+    };
+
+    // invierte el signo del operando visible en pantalla
+    const toggleSign = () => {
+      if (currentOperand === '0' || currentOperand === 'error') return;
+      const n = parseFloat(currentOperand);
+      if (isNaN(n)) return;
+      currentOperand = (n * -1).toString();
+      refreshDisplay();
+    };
+
+    // convierte el operando actual a su equivalente porcentual
+    const applyPercent = () => {
+      if (currentOperand === 'error') return;
+      const n = parseFloat(currentOperand);
+      if (isNaN(n)) return;
+      // en sumas y restas, el % es relativo al operando izquierdo
+      if (leftOperand && (storedOperator === '+' || storedOperator === '-')) {
+        currentOperand = ((parseFloat(leftOperand) * n) / 100).toString();
+      } else {
+        currentOperand = (n / 100).toString();
+      }
+      refreshDisplay();
+    };
+
+    // elimina el último carácter ingresado (tecla backspace)
+    const handleBackspace = () => {
+      if (currentOperand === 'error' || awaitingNextOperand || isEvaluationComplete) return;
+      if (currentOperand.length <= 1) {
+        currentOperand = '0';
+      } else {
+        currentOperand = currentOperand.slice(0, -1);
+        if (currentOperand === '-') currentOperand = '0'; // limpia signo suelto
+      }
+      refreshDisplay();
+    };
+
+    // -- soporte de teclado ---------------------------------
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key >= '0' && e.key <= '9') {
+        processDigit(e.key);
+      } else if (e.key === '.') {
+        processDecimal();
+      } else if (e.key === '+') {
+        processOperator('+');
+      } else if (e.key === '-') {
+        processOperator('-');
+      } else if (e.key === '*') {
+        processOperator('*');
+      } else if (e.key === '/') {
+        e.preventDefault();           // bloquea el shortcut de busqueda en firefox
+        processOperator('/');
+      } else if (e.key === 'Enter' || e.key === '=') {
+        evaluateExpression();
+      } else if (e.key === 'Escape') {
+        handleClear();
+      } else if (e.key === 'Backspace') {
+        handleBackspace();
+      } else if (e.key === '%') {
+        applyPercent();
+      }
+    });
+
+    // -- inicializacion --------------------------------------
+    refreshDisplay();
+  </script>
+</body>
+</html>
